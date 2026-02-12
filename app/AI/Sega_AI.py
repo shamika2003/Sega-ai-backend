@@ -1,4 +1,5 @@
 import base64
+import json
 import uuid
 
 from app.AI.tts_streamer import stream_tts
@@ -23,7 +24,6 @@ async def ask_ai(user_input_set: dict):
     session_id = user_input_set.get("session_id")
 
     # --- Planner ---
-
     state = await build_conversation_state(conversation_id)
 
     planner_output = call_planner(
@@ -60,16 +60,15 @@ async def ask_ai(user_input_set: dict):
         "conversation_id": conversation_id,
         "title": conversation_title,
     }
-    
+
     tool_results = {}
-    
     tool_calls = planner_output.get("tool_calls", [])
-    
+
     if tool_calls:
         for tool_call in tool_calls:
             tool_name = tool_call.get("name")
             tool_args = tool_call.get("parameters", {})
-            
+
             if tool_name == "calculator":
                 from app.AI.calculator import _solve_math
                 expr = tool_args.get("expression", "")
@@ -83,10 +82,8 @@ async def ask_ai(user_input_set: dict):
                 print(f"Result: {result}")
             elif tool_name == "web_search":
                 from app.AI.Web_search import web_search
-
                 query = tool_args.get("query", "")
                 max_results = tool_args.get("max_results", 5)
-
                 result = web_search(query, max_results)
                 tool_results[tool_call["id"]] = {
                     "tool": tool_name,
@@ -102,7 +99,6 @@ async def ask_ai(user_input_set: dict):
     tts_buffer = ""
     response_mode = user_input_set.get("response_mode", "text")
 
-
     async for chunk in call_responder(
         user_input,
         conversation_id,
@@ -110,44 +106,58 @@ async def ask_ai(user_input_set: dict):
         tool_results,
         response_mode,
     ):
-        assistant_text.append(chunk) 
+        if chunk.get("type") == "extra":
+            # content_text = json.dumps(chunk["content"], ensure_ascii=False)
+            # assistant_text.append(content_text)
+            yield {
+                "type": "extra_details",
+                "message_id": assistant_message_id,
+                "content": chunk["content"],
+            }
+            continue
+        
 
-        if response_mode == "voice_stream":
-            tts_buffer += chunk  # accumulate text
+        if chunk.get("type") == "token":
+            content_text = chunk["content"]
+            assistant_text.append(content_text)
 
-            # Send when a sentence ends
-            while any(tts_buffer.endswith(p) for p in [".", "?", "!"]):
-            # Extract the first complete sentence
-                for idx, char in enumerate(tts_buffer):
-                    if char in [".", "?", "!"]:
-                        sentence = tts_buffer[:idx + 1].strip()
-                        tts_buffer = tts_buffer[idx + 1:].lstrip()
-                        break
-                else:
-                    sentence = tts_buffer
-                    tts_buffer = ""
+            # Accumulate text for TTS
+            if response_mode == "voice_stream":
+                tts_buffer += content_text
 
-                # Generate TTS for this sentence
-                chunks = []
-                async for audio_chunk in stream_tts(sentence):
-                    chunks.append(audio_chunk)
+                # Send when a sentence ends
+                while any(tts_buffer.endswith(p) for p in [".", "?", "!"]):
+                    for idx, char in enumerate(tts_buffer):
+                        if char in [".", "?", "!"]:
+                            sentence = tts_buffer[:idx + 1].strip()
+                            tts_buffer = tts_buffer[idx + 1:].lstrip()
+                            break
+                    else:
+                        sentence = tts_buffer
+                        tts_buffer = ""
 
-                # Send chunks sequentially
-                for i, audio_chunk in enumerate(chunks):
-                    encoded_chunk = base64.b64encode(audio_chunk).decode("utf-8")
-                    yield {
-                        "type": "audio_chunk",
-                        "message_id": assistant_message_id,
-                        "data": encoded_chunk,
-                        "done": i == len(chunks) - 1,  # mark last chunk
-                    }
+                    # Generate TTS for this sentence
+                    chunks = []
+                    async for audio_chunk in stream_tts(sentence):
+                        chunks.append(audio_chunk)
 
-        yield {
-            "type": "token",
-            "message_id": assistant_message_id,
-            "content": chunk,
-        }
+                    # Send chunks sequentially
+                    for i, audio_chunk in enumerate(chunks):
+                        encoded_chunk = base64.b64encode(audio_chunk).decode("utf-8")
+                        yield {
+                            "type": "audio_chunk",
+                            "message_id": assistant_message_id,
+                            "data": encoded_chunk,
+                            "done": i == len(chunks) - 1,  # mark last chunk
+                        }
 
+            yield {
+                "type": "token",
+                "message_id": assistant_message_id,
+                "content": content_text,
+            }
+
+    print("assistant_text so far:", "".join(assistant_text))  # Debug print
 
     # --- Persist assistant message ---
     await save_assistant_message(

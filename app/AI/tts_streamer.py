@@ -2,7 +2,7 @@ import asyncio
 from typing import AsyncGenerator
 from elevenlabs.client import ElevenLabs
 
-ELEVENLABS_API_KEY = "sk_0dc7c3224346c5dc39d7ce93427f982af5f644357adb8d47"
+ELEVENLABS_API_KEY = "sk_ecba53f8a01639ec67f62eafa0c17b67796aacadc0c49ccc"
 VOICE_ID = "hpp4J3VqNfWAUOO0d1Us"  
 MODEL_ID = "eleven_multilingual_v2"
 
