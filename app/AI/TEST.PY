@@ -1,133 +1,186 @@
+# app/db.py
+import aiomysql
 import os
-from ollama import Client
-import yaml
-import json
-from dotenv import load_dotenv
+import uuid
 
-load_dotenv()
 
-from ..db import get_conversation_messages
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = int(os.getenv("DB_PORT", 3306))
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "Shamika@2003")
+DB_NAME = os.getenv("DB_NAME", "segaai")
 
-BASE_DIR = os.path.dirname(__file__)
-RESPONDER_YAML = os.path.join(BASE_DIR, "responder_prompt.yaml")
+pool = None  # global pool
 
-API_KEY = "9dca452ca8ff4bdcbad638dce38edb3e.6wrp2ylkOaocRcRUFPN88d-e"
-MODEL_NAME = "gpt-oss:120b-cloud"
+async def init_db_pool():
+    global pool
+    if pool is None:
+        pool = await aiomysql.create_pool(
+            host=DB_HOST,
+            port=DB_PORT,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            db=DB_NAME,
+            autocommit=True,
+            charset="utf8mb4",
+        )
+    return pool
 
-client = Client(
-    host="https://ollama.com",
-    headers={"Authorization": f"Bearer {API_KEY}"}
-)
 
-def dump_section(title: str, data) -> str:
-    if not data:
-        return ""
-    if isinstance(data, (dict, list)):
-        body = yaml.dump(data, sort_keys=False).strip()
-    else:
-        body = str(data).strip()
-    return f"{title}:\n{body}\n"
+async def save_get_user(user_info: dict):
+    pool = await init_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
 
-def render_memory(messages: list[dict]) -> str:
-    if not messages:
-        return ""
-    lines = []
-    for m in messages:
-        lines.append(f"{m['role']}: {m['content']}")
-    return "PAST CONVERSATION:\n" + "\n".join(lines) + "\n"
+            # Check if user exists
+            await cur.execute(
+                "SELECT * FROM users WHERE provider=%s AND provider_user_id=%s",
+                (user_info["provider"], user_info["provider_user_id"])
+            )
+            existing_user = await cur.fetchone()
+            if existing_user:
+                return existing_user
 
-async def build_responder_prompt(
-    user_input: str,
+            # Insert new user
+            user_id = str(uuid.uuid4())
+            await cur.execute(
+                """
+                INSERT INTO users (id, email, name, avatar_url, provider, provider_user_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id,
+                    user_info["email"],
+                    user_info["name"],
+                    user_info.get("avatar_url"),
+                    user_info["provider"],
+                    user_info["provider_user_id"]
+                )
+            )
+
+            # Fetch and return the new user
+            await cur.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+            new_user = await cur.fetchone()
+            return new_user
+        
+
+# Message operations
+async def ensure_conversation(
     conversation_id: str,
-    planner_output: dict,
-    response_mode: str,
-    tool_results: dict | None = None,
-    include_past_messages: bool = True,
-) -> list[dict]:
-
-    with open(RESPONDER_YAML, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-
-    tool_results = tool_results or {}
-
-    system_sections = []
-
-    system_sections.append(cfg.get("description", "").strip())
-
-    system_sections.append(dump_section("IDENTITY", cfg.get("identity")))
-    system_sections.append(dump_section("PERSONALITY", cfg.get("personality")))
-
-    system_sections.append(dump_section("CONVERSATION STYLE", cfg.get("conversation_style")))
-    system_sections.append(dump_section("SELF-EXPRESSION", cfg.get("self_expression")))
-    system_sections.append(dump_section("CORE PRINCIPLES", cfg.get("core_principles")))
-    system_sections.append(dump_section("RESPONSE STYLE RULES", cfg.get("response_style_rules")))
-    system_sections.append(dump_section("RESPONSE STYLE DEFINITIONS", cfg.get("response_style_mapping")))
-    system_sections.append(dump_section("OUTPUT RULES", cfg.get("output_rules")))
-    system_sections.append(dump_section("SAFETY AND ACCURACY", cfg.get("safety_and_accuracy")))
-
-    # --- Response Mode Control ---
-    if response_mode == "voice_stream":
-        system_sections.append(
-            "VOICE MODE INSTRUCTIONS:\n"
-            "Respond as natural spoken dialogue.\n"
-            "Do NOT use markdown, bullet points, tables, code blocks, emojis or structured formatting.\n"
-            "Use short, conversational sentences.\n"
-            "Write as if you are speaking aloud to a human.\n"
-            "Avoid symbols that would sound unnatural when read by text-to-speech.\n"
-        )
-    else:
-        system_sections.append(
-            "TEXT MODE INSTRUCTIONS:\n"
-            "Formatting such as markdown and structured responses is allowed when useful.\n"
-        )
-
-
-    system_prompt = "\n\n".join(s for s in system_sections if s)
-
-    user_context_sections = []
-
-    if planner_output:
-        user_context_sections.append(
-            dump_section("PLANNER OUTPUT (READ-ONLY)", planner_output)
-        )
-
-    if tool_results:
-        print("Tool results to include in prompt:", tool_results)  # Debug print
-        user_context_sections.append(
-            dump_section("TOOL RESULTS (READ-ONLY)", tool_results)
-        )
-
-    if include_past_messages and conversation_id:
-        past_messages = await get_conversation_messages(conversation_id)
-        if past_messages:
-            user_context_sections.append(render_memory(past_messages))
-
-    user_context_sections.append(f"CURRENT USER INPUT:\n{user_input}")
-
-    user_prompt = "\n\n".join(user_context_sections)
-
-    # print("SYSTEM PROMPT:", system_prompt)
-    # print("USER PROMPT:", user_prompt)
-
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": user_prompt},
-    ]
-   
-async def call_responder(
-    user_input: str,
-    conversation_id: str,
-    planner_output: dict,
-    tool_results: dict,
-    response_mode: str,
+    title: str,
+    user_id: str | None = None,
+    session_id: str | None = None,
 ):
-    messages = await build_responder_prompt(
-        user_input,
-        conversation_id,
-        planner_output,
-        response_mode,
-        tool_results,
-    )
+    if not user_id and not session_id:
+        raise ValueError("Either user_id or session_id is required")
 
-    for part in client.chat(MODEL_NAME, messages=messages, stream=True):
-        yield part["message"]["content"]
+    pool = await init_db_pool()
+
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            # Check if conversation exists
+            await cur.execute(
+                """
+                SELECT id, user_id, session_id
+                FROM conversations
+                WHERE id = %s
+                """,
+                (conversation_id,),
+            )
+
+            row = await cur.fetchone()
+
+            # If exists → enforce ownership
+            if row:
+                # Logged-in user
+                if user_id:
+                    if row["user_id"] and row["user_id"] != user_id:
+                        raise PermissionError("Conversation belongs to another user")
+
+                    # Guest → user takeover allowed
+                    if row["user_id"] is None and row["session_id"] != session_id:
+                        raise PermissionError("Session mismatch")
+
+                # Guest user
+                else:
+                    if row["user_id"] is not None:
+                        raise PermissionError("Conversation owned by a user")
+                    if row["session_id"] != session_id:
+                        raise PermissionError("Session mismatch")
+
+                # Safe to update
+                await cur.execute(
+                    """
+                    UPDATE conversations
+                    SET
+                        title = %s,
+                        user_id = COALESCE(user_id, %s),
+                        session_id = COALESCE(session_id, %s)
+                    WHERE id = %s
+                    """,
+                    (title, user_id, session_id, conversation_id),
+                )
+
+            # If not exists → insert
+            else:
+                await cur.execute(
+                    """
+                    INSERT INTO conversations (id, title, user_id, session_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (conversation_id, title, user_id, session_id),
+                )
+        await conn.commit()
+
+
+async def save_user_message(conversation_id: str, content: str):
+    pool = await init_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO messages (conversation_id, role, content) VALUES (%s, 'User', %s)",
+                (conversation_id, content)
+            )
+
+async def save_assistant_message(conversation_id: str, content: str):
+    pool = await init_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO messages (conversation_id, role, content) VALUES (%s, 'Assistant', %s)",
+                (conversation_id, content)
+            )
+            
+async def get_conversation_messages(conversation_id: str):
+    pool = await init_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                """
+                SELECT
+                    m.id,
+                    m.role,
+                    m.content,
+                    c.user_id,
+                    c.session_id
+                FROM messages AS m
+                JOIN conversations AS c
+                  ON m.conversation_id = c.id
+                WHERE c.id = %s
+                ORDER BY m.created_at ASC
+                """,
+                (conversation_id,)
+            )
+            return await cur.fetchall()
+
+        
+        
+async def get_conversation_list(user_id: str):
+    pool = await init_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                "SELECT id, title, created_at FROM conversations WHERE user_id=%s ORDER BY created_at DESC",
+                (user_id,)
+            )
+            return await cur.fetchall()
