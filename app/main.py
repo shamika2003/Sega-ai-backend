@@ -49,7 +49,8 @@ async def ensure_session(request: Request, call_next):
             key="session_id",
             value=str(uuid.uuid4()),
             httponly=True,
-            samesite="lax",
+            secure=True,
+            samesite="none"
             max_age=60 * 60 * 24 * 30,  # 30 days
         )
 
@@ -103,8 +104,8 @@ async def login(request: LoginRequest, response: Response):
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,            # only HTTPS in production
-        samesite="lax",
+        secure=True,            # only HTTPS in production
+        samesite="none",
         max_age=7*24*60*60      # 7 days
     )
 
@@ -136,7 +137,8 @@ async def check_auth(
             key="session_id",
             value=session_id,
             httponly=True,
-            samesite="lax",
+            secure=True,
+            samesite="none",
             max_age=60 * 60 * 24 * 30,
         )
 
