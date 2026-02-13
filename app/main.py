@@ -50,7 +50,7 @@ async def ensure_session(request: Request, call_next):
             value=str(uuid.uuid4()),
             httponly=True,
             secure=True,
-            samesite="none"
+            samesite="none",
             max_age=60 * 60 * 24 * 30,  # 30 days
         )
 
