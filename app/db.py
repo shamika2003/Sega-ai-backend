@@ -9,7 +9,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")  # Render provides this automatically
 # Parse DATABASE_URL
 if DATABASE_URL:
     result = urlparse(DATABASE_URL)
-    DB_HOST = result.hostname 
+    DB_HOST = result.hostname
     DB_PORT = result.port or 5432
     DB_USER = result.username
     DB_PASSWORD = result.password
