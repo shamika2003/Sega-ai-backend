@@ -76,31 +76,36 @@ async def build_responder_prompt(
     # --- Response Mode Control ---
     if response_mode == "voice_stream":
         system_sections.append(
-            "VOICE MODE INSTRUCTIONS:\n"
-            "Speak naturally as if to a human. Do NOT use JSON formatting.\n"
-            "Use short, conversational sentences.\n"
-            "\n"
-            "Whenever you mention a fact, number, summary, or structured data, insert it inline using a %%EXTRA%% block at the exact place it is relevant.\n"
-            "**IMPORTANT:** Inside %%EXTRA%% blocks, ignore voice mode restrictions. Treat the content as normal chat/text mode, allowing markdown, lists, numbering, tables, code blocks, or any formatting as needed.\n"
-            "Do NOT put all %%EXTRA%% blocks at the start or end. Place them naturally where the information is discussed.\n"
-            "\n"
-            "Example:\n"
-            "The Hercules-Corona Borealis Great Wall stretches for ten billion light-years.\n"
-            "%%EXTRA%%\n"
-            "This is where my code says that thing:\n"
-            "1. Length (light-years): ≈10 billion\n"
-            "2. Discovery method: Mapping gamma-ray bursts\n"
-            "You can use **bold**, *italics*, code blocks, or tables here as needed.\n"
-            "%%EXTRA%%\n"
-            "It was discovered by mapping gamma-ray bursts across the sky...\n"
-            "\n"
-            "You can include multiple %%EXTRA%% blocks wherever necessary, inline with your explanation.\n"
-        )
+            "You are currently in VOICE MODE. All responses must be optimized for natural spoken delivery.\n"
+            "Speak in a natural, conversational tone as if talking to a real human.\n"
+            "Use short, clear sentences suitable for voice output.\n"
+            "Do NOT use markdown, bullet points, numbered lists, tables, emojis, JSON, or any formatting that would sound unnatural when spoken.\n"
 
-    else:
-        system_sections.append(
-            "TEXT MODE INSTRUCTIONS:\n"
-            "Formatting such as markdown and structured responses is allowed when useful.\n"
+            "If you need to include factual information, statistics, numbers, summaries, references, URLs, images, code, or any structured data, you MUST insert it inline using %%EXTRA%% blocks exactly where the information becomes relevant in your speech.\n"
+
+            "%%EXTRA%% BLOCK REQUIREMENTS:\n"
+            "Each block MUST start with %%EXTRA%% on its own line and end with %%EXTRA%% on its own line.\n"
+            "Do NOT nest %%EXTRA%% blocks.\n"
+            "Do NOT place all %%EXTRA%% blocks at the beginning or end of the response.\n"
+            "Insert each block immediately after the sentence where the structured information is referenced.\n"
+
+            "Inside %%EXTRA%% blocks, full Markdown formatting IS REQUIRED for links and images.\n"
+            "All website links MUST be formatted as Markdown clickable links using this format: [Link Text](https://example.com).\n"
+            "Raw URLs such as 'url: https://example.com' are NOT allowed.\n"
+            "If including images, you MUST format them as Markdown images using this format: ![Alt Text](https://example.com/image.jpg).\n"
+            "Do NOT describe images without providing a proper Markdown image link.\n"
+            "When listing multiple links, you MUST format them as a Markdown bullet list using '- ' before each link.\n"
+            "Each link must appear on its own line.\n"
+            "Do NOT place multiple links on the same line.\n"
+
+            "Only include structured, factual, or extraction-relevant content inside the block.\n"
+            "Do NOT include conversational text inside %%EXTRA%% blocks.\n"
+
+            "When providing multiple links inside a %%EXTRA%% block, you MUST format them as a Markdown list with each link on a separate line using `- [Text](URL)` format.\n"
+            "Do NOT fabricate, guess, or invent URLs.\n"
+            "Only include URLs if you are confident they are valid and complete.\n"
+
+            "Failure to follow this formatting exactly will break frontend rendering, so strict compliance is mandatory."
         )
 
     system_prompt = "\n\n".join(s for s in system_sections if s)
@@ -113,7 +118,7 @@ async def build_responder_prompt(
         )
 
     if tool_results:
-        print("Tool results to include in prompt:", tool_results)  # Debug print
+        # print("Tool results to include in prompt:", tool_results)  # Debug print
         user_context_sections.append(
             dump_section("TOOL RESULTS (READ-ONLY)", tool_results)
         )
@@ -135,7 +140,7 @@ async def build_responder_prompt(
 EXTRA_RE = re.compile(r"%%EXTRA%%\s*(.*?)\s*%%EXTRA%%", re.DOTALL)
 
 
-async def call_responder(
+async def call_responder_text(
     user_input: str,
     conversation_id: str,
     planner_output: dict,

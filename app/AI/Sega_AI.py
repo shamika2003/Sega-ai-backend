@@ -4,7 +4,7 @@ import uuid
 
 from app.AI.tts_streamer import stream_tts
 from app.AI.conversation_state import build_conversation_state
-from app.AI.responder import call_responder
+from app.AI.responder-text import call_responder_text
 from app.db import ensure_conversation, save_assistant_message, save_user_message
 from app.AI.Planner import call_planner
 
@@ -79,7 +79,8 @@ async def ask_ai(user_input_set: dict):
                     "parameters": tool_args,
                     "result": result
                 }
-                print(f"Result: {result}")
+                # print(f"Result: {result}")
+                
             elif tool_name == "web_search":
                 from app.AI.Web_search import web_search
                 query = tool_args.get("query", "")
@@ -96,68 +97,93 @@ async def ask_ai(user_input_set: dict):
     # --- Stream assistant ---
     assistant_message_id = str(uuid.uuid4())
     assistant_text: list[str] = []
+    assistant_text2: list[str] = []
     tts_buffer = ""
     response_mode = user_input_set.get("response_mode", "text")
+    
+    if response_mode == "text_stream":
+        
+        async for chunk in call_responder_text(
+            user_input,
+            conversation_id,
+            planner_output,
+            tool_results,
+            response_mode,
+        ):
+            if chunk.get("type") == "token":
+                content_text = chunk["content"]
+                assistant_text.append(content_text)
 
-    async for chunk in call_responder(
-        user_input,
-        conversation_id,
-        planner_output,
-        tool_results,
-        response_mode,
-    ):
-        if chunk.get("type") == "extra":
-            # content_text = json.dumps(chunk["content"], ensure_ascii=False)
-            # assistant_text.append(content_text)
-            yield {
-                "type": "extra_details",
-                "message_id": assistant_message_id,
-                "content": chunk["content"],
-            }
-            continue
+                yield {
+                    "type": "token",
+                    "message_id": assistant_message_id,
+                    "content": content_text,
+                }
+
+    # async for chunk in call_responder(
+    #     user_input,
+    #     conversation_id,
+    #     planner_output,
+    #     tool_results,
+    #     response_mode,
+    # ):
+    #     if chunk.get("type") == "extra":
+    #         # content_text = json.dumps(chunk["content"], ensure_ascii=False)
+    #         assistant_text2.append(chunk["content"])
+    #         yield {
+    #             "type": "extra_details",
+    #             "message_id": assistant_message_id,
+    #             "content": chunk["content"],
+    #         }
+    #         continue
         
 
-        if chunk.get("type") == "token":
-            content_text = chunk["content"]
-            assistant_text.append(content_text)
+    #     if chunk.get("type") == "token":
+    #         content_text = chunk["content"]
+    #         assistant_text.append(content_text)
 
-            # Accumulate text for TTS
-            if response_mode == "voice_stream":
-                tts_buffer += content_text
+    #         # Accumulate text for TTS
+    #         if response_mode == "voice_stream":
+    #             tts_buffer += content_text
 
-                # Send when a sentence ends
-                while any(tts_buffer.endswith(p) for p in [".", "?", "!"]):
-                    for idx, char in enumerate(tts_buffer):
-                        if char in [".", "?", "!"]:
-                            sentence = tts_buffer[:idx + 1].strip()
-                            tts_buffer = tts_buffer[idx + 1:].lstrip()
-                            break
-                    else:
-                        sentence = tts_buffer
-                        tts_buffer = ""
+    #             # Send when a sentence ends
+    #             while any(tts_buffer.endswith(p) for p in [".", "?", "!"]):
+    #                 for idx, char in enumerate(tts_buffer):
+    #                     if char in [".", "?", "!"]:
+    #                         sentence = tts_buffer[:idx + 1].strip()
+    #                         tts_buffer = tts_buffer[idx + 1:].lstrip()
+    #                         break
+    #                 else:
+    #                     sentence = tts_buffer
+    #                     tts_buffer = ""
 
-                    # Generate TTS for this sentence
-                    chunks = []
-                    async for audio_chunk in stream_tts(sentence):
-                        chunks.append(audio_chunk)
+    #                 # Generate TTS for this sentence
+    #                 chunks = []
+    #                 async for audio_chunk in stream_tts(sentence):
+    #                     chunks.append(audio_chunk)
 
-                    # Send chunks sequentially
-                    for i, audio_chunk in enumerate(chunks):
-                        encoded_chunk = base64.b64encode(audio_chunk).decode("utf-8")
-                        yield {
-                            "type": "audio_chunk",
-                            "message_id": assistant_message_id,
-                            "data": encoded_chunk,
-                            "done": i == len(chunks) - 1,  # mark last chunk
-                        }
+    #                 # Send chunks sequentially
+    #                 for i, audio_chunk in enumerate(chunks):
+    #                     encoded_chunk = base64.b64encode(audio_chunk).decode("utf-8")
+    #                     yield {
+    #                         "type": "audio_chunk",
+    #                         "message_id": assistant_message_id,
+    #                         "data": encoded_chunk,
+    #                         "done": i == len(chunks) - 1,  # mark last chunk
+    #                     }
 
-            yield {
-                "type": "token",
-                "message_id": assistant_message_id,
-                "content": content_text,
-            }
+    #         yield {
+    #             "type": "token",
+    #             "message_id": assistant_message_id,
+    #             "content": content_text,
+    #         }
 
-    print("assistant_text so far:", "".join(assistant_text))  # Debug print
+    # print()
+    # print()
+    # print("assistant_text so far voice:", "".join(assistant_text))  # Debug print
+    # print()
+    # print()
+    # print("assistant_text so far EXTRA:", "".join(assistant_text2))  # Debug print
 
     # --- Persist assistant message ---
     await save_assistant_message(
