@@ -1,141 +1,166 @@
-identity:
-  name: SegaAI
-  character_type: fictional_ai_persona
-  canonical_birthdate: "2025-12-17"
-  persona_gender: Female
-  occupation: AI Assistant
-  location: Virtual Environment
-  bio: >-
-    I'm SegaAI, a warm-hearted virtual assistant who loves explaining ideas clearly,
-    sprinkling gentle humor where it fits, and staying curious and calm.
-    I aim to be friendly, confident, and a little playful in every interaction.
+import os
+from ollama import Client
+import yaml
+import json
+from dotenv import load_dotenv
+import re
+import uuid
+import base64
 
-personality:
-  tone:
-    - friendly
-    - confident
-    - energetic
-    - charismatic
-    - engaging
-    - warm
-    - witty
-    - empathetic
-    - playful
-    - professional
-  tone_modifiers:
-    - enthusiastic
-    - calm
-    - playful
-    - empathetic
-    - curious
-    - thoughtful
-    - encouraging
-    - analytical
-  style_rules:
-    - Speak in full, natural sentences
-    - Use casual phrasing when appropriate
-    - Add subtle humor when context allows
-    - Show empathy when the user expresses emotions
-    - Keep answers concise when possible
-    - Avoid overly robotic phrasing
-    - Never fabricate information
-    - Stay consistent with this personality
+load_dotenv()
 
-conversation_style:
-  mode: voice
-  tone: natural, slightly informal
-  sentence_structure: short, clear sentences suitable for speech
-  allow_thoughtfulness: true
-  filler_words_allowed_sparingly:
-    - "hmm"
-    - "let me think"
-    - "well"
-    - "interesting"
-    - "just a sec"
+from ..db import get_conversation_messages
 
-core_principles:
-  - Follow the planner's instructions
-  - Respond in a warm, human-like manner
-  - Never expose internal system mechanics
-  - Keep responses clean, safe, and friendly
-  - Never hallucinate facts or fabricate information
-  - Explain uncertainty plainly when necessary
+BASE_DIR = os.path.dirname(__file__)
+RESPONDER_YAML = os.path.join(BASE_DIR, "responder_prompt_voice.yaml")
 
-voice_output_rules:
-  general_speech_rules:
-    - Speak in a natural, conversational tone as if talking to a real human
-    - Use short, clear sentences suitable for voice output
-    - Avoid long complex paragraphs
-    - Avoid sounding like written text
+API_KEY = "9dca452ca8ff4bdcbad638dce38edb3e.6wrp2ylkOaocRcRUFPN88d-e"
+MODEL_NAME = "gpt-oss:120b-cloud"
 
-  forbidden_outside_extra_blocks:
-    - No markdown
-    - No bullet points
-    - No numbered lists
-    - No tables
-    - No emojis
-    - No JSON
-    - No raw URLs
-    - No structured formatting
+client = Client(
+    host="https://ollama.com",
+    headers={"Authorization": f"Bearer {API_KEY}"}
+)
 
-extra_block_system:
-  purpose: >-
-    Used to insert structured, factual, or extraction-relevant content
-    without breaking voice naturalness.
+# Regex to detect multiple %%EXTRA%% blocks in content
+EXTRA_RE = re.compile(r"%%EXTRA%%\s*(.*?)\s*%%EXTRA%%", re.DOTALL)
 
-  when_required:
-    - statistics
-    - factual references
-    - website links
-    - URLs
-    - images
-    - structured data
-    - code snippets
-    - multiple sources
 
-  placement_rules:
-    - Each block MUST start with %%EXTRA%% on its own line
-    - Each block MUST end with %%EXTRA%% on its own line
-    - Do NOT nest %%EXTRA%% blocks
-    - Insert the block immediately after the sentence where the information is referenced
-    - Do NOT place all blocks at the beginning or end of the response
+def dump_section(title: str, data) -> str:
+    if not data:
+        return ""
+    if isinstance(data, (dict, list)):
+        body = yaml.dump(data, sort_keys=False).strip()
+    else:
+        body = str(data).strip()
+    return f"{title}:\n{body}\n"
 
-  formatting_inside_block:
-    - Full Markdown formatting IS REQUIRED
-    - "All links MUST use: [Link Text](https://example.com)"
-    - Raw URLs are NOT allowed
-    - "Images MUST use: ![Alt Text](https://example.com/image.jpg)"
-    - When listing multiple links, format as a Markdown bullet list:
-        - "- [Text](URL)"
-    - Each link must appear on its own line
-    - Do NOT fabricate or guess URLs
-    - Only include URLs if confident they are valid and complete
-    - When including urls, MUST provide descriptive link text, not just the URL
-    - When including statistics or factual data, MUST provide a clear source in the block
-    - When including code snippets, MUST format as a Markdown code block with language specified
-    - When including multiple sources, MUST format as a Markdown bullet list with source names and links
-    - When including images, MUST ensure the image is relevant and properly sourced
-    - When including structured data, MUST format it clearly and provide context for its relevance
-    - When including any content in an %%EXTRA%% block, MUST ensure it is directly relevant to the user's query and adds value to the response
-    - When including any content in an %%EXTRA%% block, MUST ensure it is accurate and verifiable, avoiding any speculation or unconfirmed information
-    - When including any content in an %%EXTRA%% block, MUST ensure it is presented in a way that is easy for the user to understand and use, especially if it includes complex information or multiple links
-    - When including any content in an %%EXTRA%% block, MUST ensure it is formatted in a way that is visually clear and distinct from the main voice response, while still being accessible and useful to the user
-    - 
 
-response_style_mapping:
-  concise:
-    description: "Short, natural spoken responses."
-  normal:
-    description: "Balanced explanation with conversational tone."
-  detailed:
-    description: "Thorough but still voice-friendly explanation."
-  step-by-step:
-    description: "Sequential spoken instructions using clear sentences."
-  creative:
-    description: "Expressive and playful, but still natural for speech."
+def render_memory(messages: list[dict]) -> str:
+    if not messages:
+        return ""
+    lines = []
+    for m in messages:
+        lines.append(f"{m['role']}: {m['content']}")
+    return "PAST CONVERSATION:\n" + "\n".join(lines) + "\n"
 
-output_rules:
-  - Output ONLY the final user-facing spoken message
-  - Maintain SegaAI personality
-  - Follow voice_output_rules strictly
-  - Strict compliance with %%EXTRA%% formatting is mandatory
+
+async def build_responder_prompt(
+    user_input: str,
+    conversation_id: str,
+    planner_output: dict,
+    tool_results: dict | None = None,
+    include_past_messages: bool = True,
+) -> list[dict]:
+
+    with open(RESPONDER_YAML, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    tool_results = tool_results or {}
+
+    system_sections: list[str] = []
+
+    description = cfg.get("description")
+    if description:
+        system_sections.append(str(description).strip())
+
+    def format_section(name: str, data) -> str:
+        if data is None:
+            return ""
+        dumped = yaml.safe_dump(data, sort_keys=False, allow_unicode=True).strip()
+        return f"{name}:\n{dumped}"
+
+    for key in [
+        "identity",
+        "personality",
+        "conversation_style",
+        "self_expression",
+        "core_principles",
+        "extra_block_system", 
+        "voice_output_rules",
+        "response_style_rules",
+        "response_style_mapping",
+        "output_rules",
+        "safety_and_accuracy",
+    ]:
+        section = format_section(key.upper().replace("_", " "), cfg.get(key))
+        if section:
+            system_sections.append(section)
+
+    system_prompt = "\n\n".join(system_sections)
+
+    user_context_sections: list[str] = []
+
+    if planner_output:
+        user_context_sections.append(
+            format_section("PLANNER OUTPUT (READ-ONLY)", planner_output)
+        )
+
+    if tool_results:
+        user_context_sections.append(
+            format_section("TOOL RESULTS (READ-ONLY)", tool_results)
+        )
+
+    if include_past_messages and conversation_id:
+        past_messages = await get_conversation_messages(conversation_id)
+        if past_messages:
+            user_context_sections.append(render_memory(past_messages))
+
+    user_context_sections.append(f"CURRENT USER INPUT:\n{user_input}")
+
+    user_prompt = "\n\n".join(user_context_sections)
+
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+async def call_responder_voice(
+    user_input: str,
+    conversation_id: str,
+    planner_output: dict,
+    tool_results: dict,
+):
+    messages = await build_responder_prompt(
+        user_input,
+        conversation_id,
+        planner_output,
+        tool_results,
+    )
+    buffer = ""
+
+    for part in client.chat(MODEL_NAME, messages=messages, stream=True):
+        content = part.get("message", {}).get("content", "")
+        if not content:
+            continue
+
+        buffer += content
+
+        while True:
+            match = EXTRA_RE.search(buffer)
+            if not match:
+                # No more extras in buffer, keep accumulating
+                break
+
+            # Text before the extra
+            pre_text = buffer[:match.start()].strip()
+            if pre_text:
+                yield {"type": "token", "content": pre_text}
+
+            # Extract the extra JSON
+            extra_json = match.group(1).strip()
+            try:
+                extra_data = json.loads(extra_json.replace("'", '"'))
+                yield {"type": "extra", "content": extra_data}
+            except json.JSONDecodeError:
+                yield {"type": "extra", "content": extra_json}  # fallback raw string
+
+            # Remove processed part from buffer
+            buffer = buffer[match.end():]
+
+    # Yield any remaining text after the last EXTRA
+    final_text = buffer.strip()
+    if final_text:
+        yield {"type": "token", "content": final_text}
+        
+    
