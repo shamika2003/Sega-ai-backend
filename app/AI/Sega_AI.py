@@ -3,6 +3,7 @@ import json
 import os
 import uuid
 
+from datetime import datetime
 from app.AI.tts_streamer import stream_tts
 from app.AI.responder_text import call_responder_text
 from app.AI.responder_voice import call_responder_voice
@@ -49,7 +50,8 @@ async def ask_ai(user_input_set: dict):
     planner_output = call_planner(
         user_input=user_input,
         state=state,
-        vision_context=vision_context
+        vision_context=vision_context,
+        date_time=datetime.now(),
     )
 
     conversation_title = planner_output.get(

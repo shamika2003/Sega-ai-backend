@@ -21,6 +21,7 @@ client = Client(
 def build_planner_prompt(
     user_input: str,
     state: Mapping[str, Any],
+    date_time: str,
     vision_context: str
 ) -> str:
     with open(PLANNER_YAML, "r", encoding="utf-8") as f:
@@ -64,6 +65,9 @@ Use this information when determining intent, tool usage, and response style.
 USER INPUT:
 {user_input}
 
+CURRENT TIME:
+{date_time}
+
 OUTPUT JSON:
 """.strip()
 
@@ -71,9 +75,10 @@ OUTPUT JSON:
 def call_planner(
     user_input: str,
     state: Mapping[str, Any],
+    date_time:str,
     vision_context: str
 ) -> dict:
-    prompt = build_planner_prompt(user_input, state, vision_context)
+    prompt = build_planner_prompt(user_input, state, date_time, vision_context)
 
     messages = [{"role": "user", "content": prompt}]
 
