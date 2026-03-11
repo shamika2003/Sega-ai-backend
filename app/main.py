@@ -1,13 +1,15 @@
 # app/main.py
+import os
+import httpx
+import requests
+import uuid
+
 from typing import Optional
 from fastapi import Query, Response, FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-import httpx
 from pydantic import BaseModel
-import requests
-import uuid
 from bs4 import BeautifulSoup
-
+from fastapi.staticfiles import StaticFiles
 from app.ws.chat import chat_socket
 
 from app.db import get_conversation_list, get_conversation_messages, save_get_user
@@ -19,6 +21,15 @@ from app.auth_config import (
 )
 
 app = FastAPI()
+
+
+BASE_DIR = os.path.dirname(__file__)
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory=os.path.join(BASE_DIR, "uploads")),
+    name="uploads"
+)
 
 # =========================
 # CORS
@@ -200,43 +211,35 @@ async def fetch_conversation(
     user_id = None
     session_id = request.cookies.get("session_id")
 
-    # Try decode access token if present
     if authorization and authorization.startswith("Bearer "):
         token = authorization.replace("Bearer ", "")
         user_id = decode_access_token(token)
     
-    # Fallback: use session_id for guests
     if not user_id:
         if not session_id:
             raise HTTPException(status_code=400, detail="Missing access token or session_id")
 
-    # Fetch messages from DB
     messages = await get_conversation_messages(conversation_id)
 
-    
     # Authorization check
     if not messages:
-        # conversation not found
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Assuming each message has conversation.user_id and conversation.session_id
     conv_owner_user_id = messages[0].get("user_id")
     conv_owner_session_id = messages[0].get("session_id")
 
-    print(user_id)
-    print(messages)
-    
     if user_id:
-        if user_id:
-            if (
-                conv_owner_user_id != user_id
-                and conv_owner_session_id != session_id
-            ):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Not authorized for this conversation"
-                )
+        if conv_owner_user_id != user_id and conv_owner_session_id != session_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized for this conversation"
+            )
 
+    # Attach file URLs
+    for msg in messages:
+        if msg["item_type"] == "upload" and msg["upload_id"]:
+            ext = msg.get("file_ext") or "jpg"
+            msg["file_url"] = f"/uploads/{msg['upload_id']}{ext}"
 
     return {"messages": messages}
 

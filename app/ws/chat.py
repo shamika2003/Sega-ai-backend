@@ -6,11 +6,6 @@ import uuid
 from fastapi import WebSocket, WebSocketDisconnect
 from app.auth_config import decode_access_token, decode_refresh_token
 from app.AI.Sega_AI import ask_ai
-from app.db import save_upload
-
-# Directory to save uploaded files/images
-UPLOAD_DIR = "app/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 async def chat_socket(websocket: WebSocket):
@@ -49,40 +44,6 @@ async def chat_socket(websocket: WebSocket):
             conversation_id = payload.get("conversation_id")
             response_mode = payload.get("response_mode", "text")
 
-            saved_files = []
-
-            # --- Handle uploaded files ---
-            for f in files:
-                file_type = f.get("type") 
-                name = f.get("name")
-                content = f.get("content")
-
-                if content and name:
-
-                    # Remove data URI prefix
-                    if "," in content:
-                        content = content.split(",")[1]
-
-                    try:
-                        data = base64.b64decode(content)
-
-                        # Extract file extension
-                        file_ext = os.path.splitext(name)[1].lower() 
-
-                        file_id = str(uuid.uuid4())
-
-                        await save_upload(file_id, file_ext, file_type, name)
-
-                        save_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_ext}")
-
-                        with open(save_path, "wb") as fp:
-                            fp.write(data)
-
-                        saved_files.append(save_path)
-
-                    except Exception as e:
-                        print(f"Failed to save file {name}: {e}")
-
             # --- Prepare AI payload ---
             ai_payload = {
                 "user_input": user_input,
@@ -90,7 +51,7 @@ async def chat_socket(websocket: WebSocket):
                 "session_id": session_id,
                 "user_id": user_id,  # None = guest
                 "response_mode": response_mode,
-                "files": saved_files 
+                "files": files 
             }
 
             # --- Stream AI response ---

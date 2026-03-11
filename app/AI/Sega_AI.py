@@ -8,7 +8,7 @@ from app.AI.tts_streamer import stream_tts
 from app.AI.responder_text import call_responder_text
 from app.AI.responder_voice import call_responder_voice
 from app.AI.conversation_state import build_conversation_state
-from app.db import ensure_conversation, save_assistant_message, save_user_message
+from app.db import ensure_conversation, save_assistant_message, save_user_message, save_upload
 from app.AI.Planner import call_planner
 from app.AI.vision_analyzer import analyze_files
 
@@ -23,15 +23,51 @@ async def ask_ai(user_input_set: dict):
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
 
-    # --- Auth context (TRUST WS) ---
+    # --- Auth context ---
     user_id = user_input_set.get("user_id")     
     session_id = user_input_set.get("session_id")
+    
+    saved_files = []
+    
+    # Directory to save uploaded files/images
+    UPLOAD_DIR = "app/uploads"
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    # --- Handle uploaded files ---
+    for f in user_input_set.get("files"):
+        file_type = f.get("type") 
+        name = f.get("name")
+        content = f.get("content")
+
+        if content and name:
+
+            # Remove data URI prefix
+            if "," in content:
+                content = content.split(",")[1]
+
+            try:
+                data = base64.b64decode(content)
+
+                file_ext = os.path.splitext(name)[1].lower() 
+ 
+                file_id = str(uuid.uuid4())
+ 
+                await save_upload(file_id, file_ext, file_type, name, conversation_id)
+ 
+                save_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_ext}")
+ 
+                with open(save_path, "wb") as fp:
+                    fp.write(data)
+ 
+                saved_files.append(save_path)
+ 
+            except Exception as e:
+                print(f"Failed to save file {name}: {e}")
 
     # --- Vision Analyzer ---
-    files = user_input_set.get("files", [])
     valid_files = []
 
-    for f_path in files:
+    for f_path in saved_files:
         if isinstance(f_path, str) and os.path.exists(f_path):
             valid_files.append(f_path)
 

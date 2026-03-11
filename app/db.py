@@ -165,21 +165,54 @@ async def get_conversation_messages(conversation_id: str):
             await cur.execute(
                 """
                 SELECT
-                    m.id,
-                    m.role,
-                    m.content,
-                    c.user_id,
-                    c.session_id
-                FROM messages AS m
-                JOIN conversations AS c
-                  ON m.conversation_id = c.id
-                WHERE c.id = %s
-                ORDER BY m.created_at ASC
+                    item_id,
+                    item_type,
+                    role,
+                    content,
+                    upload_id,
+                    file_ext,
+                    user_id,
+                    session_id,
+                    created_at
+                FROM (
+
+                    SELECT
+                        m.id          AS item_id,
+                        'message'     AS item_type,
+                        m.role,
+                        m.content,
+                        NULL          AS upload_id,
+                        NULL          AS file_ext,
+                        c.user_id,
+                        c.session_id,
+                        m.created_at  AS created_at
+                    FROM messages      AS m
+                    JOIN conversations AS c
+                    ON m.conversation_id = c.id
+                    WHERE c.id = %s
+
+                    UNION ALL
+
+                    SELECT
+                        u.id          AS item_id,
+                        'upload'      AS item_type,
+                        NULL          AS role,
+                        NULL          AS content,
+                        u.id          AS upload_id,
+                        u.file_ext          AS file_ext,
+                        c.user_id,
+                        c.session_id,
+                        u.created_at  AS created_at
+                    FROM uploads       AS u
+                    JOIN conversations AS c
+                    ON u.conversation_id = c.id
+                    WHERE c.id = %s
+                ) AS combined
+                ORDER BY created_at ASC
                 """,
-                (conversation_id,)
+                (conversation_id, conversation_id)
             )
             return await cur.fetchall()
-
         
         
 async def get_conversation_list(user_id: str):
@@ -220,11 +253,11 @@ async def get_reminder_set(start_date: str, end_date: str):
             return await cur.fetchall()
         
 
-async def save_upload(id: str, file_ext: str, type: str, name: str):
+async def save_upload(id: str, file_ext: str, type: str, messages_id: str, name: str, conversation_id: str):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "INSERT INTO uploads (id, type, file_ext, name) VALUES (%s, %s, %s, %s)",
-                (id, type, file_ext, name)
+                "INSERT INTO uploads (id, type, file_ext, messages_id, name, conversation_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                (id, type, file_ext, messages_id, name, conversation_id)
             )
