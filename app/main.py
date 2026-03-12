@@ -1,4 +1,5 @@
 # app/main.py
+import json
 import os
 import httpx
 import requests
@@ -215,33 +216,54 @@ async def fetch_conversation(
         token = authorization.replace("Bearer ", "")
         user_id = decode_access_token(token)
     
-    if not user_id:
-        if not session_id:
-            raise HTTPException(status_code=400, detail="Missing access token or session_id")
+    if not user_id and not session_id:
+        raise HTTPException(status_code=400, detail="Missing access token or session_id")
 
     messages = await get_conversation_messages(conversation_id)
 
-    # Authorization check
     if not messages:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # Authorization check
     conv_owner_user_id = messages[0].get("user_id")
     conv_owner_session_id = messages[0].get("session_id")
-
     if user_id:
         if conv_owner_user_id != user_id and conv_owner_session_id != session_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Not authorized for this conversation"
-            )
+            raise HTTPException(status_code=403, detail="Not authorized for this conversation")
 
-    # Attach file URLs
+    # Process messages and attach uploads
+    processed_messages = []
     for msg in messages:
-        if msg["item_type"] == "upload" and msg["upload_id"]:
-            ext = msg.get("file_ext") or "jpg"
-            msg["file_url"] = f"/uploads/{msg['upload_id']}{ext}"
+        # Parse uploads if stored as JSON string
+        uploads_list = []
+        if msg.get("uploads"):
+            try:
+                uploads_data = json.loads(msg["uploads"])
+                for u in uploads_data:
+                    file_ext = u.get("file_ext") or ".jpg"
+                    base_url = str(request.base_url)  
+                    file_url = f"{base_url}uploads/{u['upload_id']}{file_ext}"
+                    uploads_list.append({**u, "file_url": file_url})
+            except json.JSONDecodeError:
+                uploads_list = []
 
-    return {"messages": messages}
+        processed_messages.append({
+            "conversation_id": msg["conversation_id"],
+            "message_id": msg["message_id"],
+            "user_id": msg["user_id"],
+            "session_id": msg["session_id"],
+            "role": msg["role"],
+            "title": msg.get("title"),
+            "content": msg.get("content"),
+            "uploads": uploads_list,
+            "message_created": msg.get("message_created"),
+            "latest_upload": uploads_list[-1]["created_at"] if uploads_list else None
+        })
+
+    # Optional: sort messages by created date globally
+    processed_messages.sort(key=lambda x: x["message_created"])
+
+    return {"messages": processed_messages}
 
 
 @app.get("/api/conversations_list")

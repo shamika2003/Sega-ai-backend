@@ -23,6 +23,9 @@ async def ask_ai(user_input_set: dict):
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
 
+    user_message_id = str(uuid.uuid4())
+    assistant_message_id = str(uuid.uuid4())
+
     # --- Auth context ---
     user_id = user_input_set.get("user_id")     
     session_id = user_input_set.get("session_id")
@@ -52,7 +55,7 @@ async def ask_ai(user_input_set: dict):
  
                 file_id = str(uuid.uuid4())
  
-                await save_upload(file_id, file_ext, file_type, name, conversation_id)
+                await save_upload(file_id, file_ext, file_type, user_message_id, name, conversation_id)
  
                 save_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_ext}")
  
@@ -165,7 +168,6 @@ async def ask_ai(user_input_set: dict):
                 print(f"Unknown tool: {tool_name}")  # Debug print
 
     # --- Stream assistant ---
-    assistant_message_id = str(uuid.uuid4())
     assistant_text: list[str] = []
     assistant_text2: list[str] = []
     tts_buffer = ""
@@ -249,12 +251,13 @@ async def ask_ai(user_input_set: dict):
     print("Final text:", "".join(assistant_text))
 
     # --- Save user message ---
-    await save_user_message(conversation_id, user_input)
+    await save_user_message(conversation_id, user_input, user_message_id)
     
     # --- Persist assistant message ---
     await save_assistant_message(
         conversation_id,
         "".join(assistant_text),
+        assistant_message_id,
     )
 
     yield {

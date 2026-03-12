@@ -140,22 +140,22 @@ async def ensure_conversation(
         await conn.commit()
 
 
-async def save_user_message(conversation_id: str, content: str):
+async def save_user_message(conversation_id: str, content: str, message_id: str):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "INSERT INTO messages (conversation_id, role, content) VALUES (%s, 'User', %s)",
-                (conversation_id, content)
+                "INSERT INTO messages (id, conversation_id, role, content) VALUES (%s, %s, 'User', %s)",
+                (message_id, conversation_id, content)
             )
 
-async def save_assistant_message(conversation_id: str, content: str):
+async def save_assistant_message(conversation_id: str, content: str, message_id: str):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "INSERT INTO messages (conversation_id, role, content) VALUES (%s, 'Assistant', %s)",
-                (conversation_id, content)
+                "INSERT INTO messages (id, conversation_id, role, content) VALUES (%s, %s, 'Assistant', %s)",
+                (message_id, conversation_id, content)
             )
             
 async def get_conversation_messages(conversation_id: str):
@@ -165,52 +165,35 @@ async def get_conversation_messages(conversation_id: str):
             await cur.execute(
                 """
                 SELECT
-                    item_id,
-                    item_type,
-                    role,
-                    content,
-                    upload_id,
-                    file_ext,
-                    user_id,
-                    session_id,
-                    created_at
-                FROM (
+                    c.id  AS conversation_id,
+                    c.title,
+                    c.user_id,
+                    c.session_id,
+                    m.id  AS message_id,
+                    m.role,
+                    m.content,
+                    m.created_at AS message_created,
 
-                    SELECT
-                        m.id          AS item_id,
-                        'message'     AS item_type,
-                        m.role,
-                        m.content,
-                        NULL          AS upload_id,
-                        NULL          AS file_ext,
-                        c.user_id,
-                        c.session_id,
-                        m.created_at  AS created_at
-                    FROM messages      AS m
-                    JOIN conversations AS c
-                    ON m.conversation_id = c.id
-                    WHERE c.id = %s
-
-                    UNION ALL
-
-                    SELECT
-                        u.id          AS item_id,
-                        'upload'      AS item_type,
-                        NULL          AS role,
-                        NULL          AS content,
-                        u.id          AS upload_id,
-                        u.file_ext          AS file_ext,
-                        c.user_id,
-                        c.session_id,
-                        u.created_at  AS created_at
-                    FROM uploads       AS u
-                    JOIN conversations AS c
-                    ON u.conversation_id = c.id
-                    WHERE c.id = %s
-                ) AS combined
-                ORDER BY created_at ASC
+                    JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'upload_id',   u.id,
+                            'name',        u.name,
+                            'file_ext',    u.file_ext,
+                            'created_at',  u.created_at
+                        )
+                    ) AS uploads,
+                    MAX(u.created_at) AS latest_upload
+                FROM conversations AS c
+                LEFT JOIN messages AS m ON c.id = m.conversation_id
+                LEFT JOIN uploads  AS u ON m.id = u.message_id
+                WHERE c.id = %s
+                GROUP BY
+                    c.id, c.title,
+                    m.id, m.role, m.content, m.created_at
+                ORDER BY
+                    COALESCE(MAX(u.created_at), m.created_at, c.created_at) ASC
                 """,
-                (conversation_id, conversation_id)
+                (conversation_id,)  
             )
             return await cur.fetchall()
         
@@ -253,11 +236,11 @@ async def get_reminder_set(start_date: str, end_date: str):
             return await cur.fetchall()
         
 
-async def save_upload(id: str, file_ext: str, type: str, messages_id: str, name: str, conversation_id: str):
+async def save_upload(id: str, file_ext: str, type: str, message_id: str, name: str, conversation_id: str):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "INSERT INTO uploads (id, type, file_ext, messages_id, name, conversation_id) VALUES (%s, %s, %s, %s, %s, %s)",
-                (id, type, file_ext, messages_id, name, conversation_id)
+                "INSERT INTO uploads (id, type, file_ext, message_id, name, conversation_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                (id, type, file_ext, message_id, name, conversation_id)
             )
