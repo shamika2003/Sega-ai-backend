@@ -140,22 +140,25 @@ async def ensure_conversation(
         await conn.commit()
 
 
-async def save_user_message(conversation_id: str, content: str, message_id: str):
+async def save_user_message(conversation_id: str, content: str):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "INSERT INTO messages (id, conversation_id, role, content) VALUES (%s, %s, 'User', %s)",
-                (message_id, conversation_id, content)
+                "INSERT INTO messages ( conversation_id, role, content) VALUES (%s, 'User', %s)",
+                ( conversation_id, content)
             )
 
-async def save_assistant_message(conversation_id: str, content: str, message_id: str):
+            message_id = cur.lastrowid
+            return message_id
+
+async def save_assistant_message(conversation_id: str, content: str):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "INSERT INTO messages (id, conversation_id, role, content) VALUES (%s, %s, 'Assistant', %s)",
-                (message_id, conversation_id, content)
+                "INSERT INTO messages (conversation_id, role, content) VALUES (%s, 'Assistant', %s)",
+                ( conversation_id, content)
             )
             
 async def get_conversation_messages(conversation_id: str):
@@ -193,7 +196,7 @@ async def get_conversation_messages(conversation_id: str):
                 ORDER BY
                     COALESCE(MAX(u.created_at), m.created_at, c.created_at) ASC
                 """,
-                (conversation_id,)  
+                (conversation_id)  
             )
             return await cur.fetchall()
         
@@ -236,11 +239,11 @@ async def get_reminder_set(start_date: str, end_date: str):
             return await cur.fetchall()
         
 
-async def save_upload(id: str, file_ext: str, type: str, message_id: str, name: str, conversation_id: str):
+async def save_upload(id: str, file_ext: str, type: str, message_id: str, name: str, conversation_id: str, description: str):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "INSERT INTO uploads (id, type, file_ext, message_id, name, conversation_id) VALUES (%s, %s, %s, %s, %s, %s)",
-                (id, type, file_ext, message_id, name, conversation_id)
+                "INSERT INTO uploads (id, type, file_ext, message_id, name, conversation_id, description) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (id, type, file_ext, message_id, name, conversation_id, description)
             )

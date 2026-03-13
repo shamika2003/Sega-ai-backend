@@ -1,4 +1,6 @@
+import base64
 import os
+import uuid
 from ollama import Client
 
 MODEL_NAME = "qwen3.5:397b-cloud"   # or qwen2.5vl:7b / 72b depending on your setup
@@ -10,9 +12,58 @@ client = Client(
 )
 
 SUPPORTED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
-
+UPLOAD_DIR = "app/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 async def analyze_files(files: list[str]):
+    saved_files = []
+    upload_details = []
+
+    for f in files:
+        file_type = f.get("type") 
+        name = f.get("name")
+        content = f.get("content")
+
+        if content and name:
+
+            # Remove data URI prefix
+            if "," in content:
+                content = content.split(",")[1]
+
+            try:
+                data = base64.b64decode(content)
+
+                file_ext = os.path.splitext(name)[1].lower() 
+ 
+                file_id = str(uuid.uuid4())
+ 
+                save_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_ext}")
+ 
+                with open(save_path, "wb") as fp:
+                    fp.write(data)
+
+                    upload_details.append({
+                        "file_id": file_id,
+                        "file_ext": file_ext,
+                        "file_type": file_type,
+                        "name": name,
+                    })
+ 
+                saved_files.append(save_path)
+ 
+            except Exception as e:
+                print(f"Failed to save file {name}: {e}")
+
+    analyzer_results = await call_analyzer(saved_files)
+
+    return {
+        "upload_details": upload_details,
+        "analyzer_results": analyzer_results,
+    }
+
+
+
+async def call_analyzer(files: list[str]):
 
     summaries = []
     combined_text = ""

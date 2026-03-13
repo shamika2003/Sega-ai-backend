@@ -233,19 +233,27 @@ async def fetch_conversation(
 
     # Process messages and attach uploads
     processed_messages = []
+
     for msg in messages:
-        # Parse uploads if stored as JSON string
         uploads_list = []
+        uploads_data = []
+
+        print(msg.get("uploads"))
+
         if msg.get("uploads"):
             try:
                 uploads_data = json.loads(msg["uploads"])
-                for u in uploads_data:
-                    file_ext = u.get("file_ext") or ".jpg"
-                    base_url = str(request.base_url)  
-                    file_url = f"{base_url}uploads/{u['upload_id']}{file_ext}"
-                    uploads_list.append({**u, "file_url": file_url})
             except json.JSONDecodeError:
-                uploads_list = []
+                uploads_data = []
+
+        # Now uploads_data is a Python list
+        if uploads_data and uploads_data[0].get("upload_id"):
+            for u in uploads_data:
+                file_ext = u.get("file_ext") or ".jpg"
+                base_url = str(request.base_url)
+                file_url = f"{base_url}uploads/{u['upload_id']}{file_ext}"
+
+                uploads_list.append({**u, "file_url": file_url})
 
         processed_messages.append({
             "conversation_id": msg["conversation_id"],
@@ -260,7 +268,6 @@ async def fetch_conversation(
             "latest_upload": uploads_list[-1]["created_at"] if uploads_list else None
         })
 
-    # Optional: sort messages by created date globally
     processed_messages.sort(key=lambda x: x["message_created"])
 
     return {"messages": processed_messages}

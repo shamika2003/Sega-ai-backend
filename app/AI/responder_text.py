@@ -112,6 +112,7 @@ async def build_responder_prompt(
         )
 
     if vision_context:
+
         user_context_sections.append(
             f"""
             VISUAL FILE ANALYSIS (AUTO-GENERATED CONTEXT):
@@ -119,6 +120,8 @@ async def build_responder_prompt(
             the following description of their visual content.
 
             Use this information when answering questions related to the files.
+
+            Even if the user does not ask for the files, you must accept the files and ask the user why they sent the files.
 
             --- BEGIN VISUAL ANALYSIS ---
             {vision_context}
