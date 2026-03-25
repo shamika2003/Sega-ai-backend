@@ -2,7 +2,7 @@ from datetime import datetime
 import uuid
 
 from app.AI.conversation_state import build_conversation_state
-from app.db import ensure_conversation, save_assistant_message, save_user_message, save_upload
+from app.db import ensure_conversation, save_assistant_message, save_user_message, save_upload, update_generate
 from app.AI.tts_streamer import stream_tts
 from app.AI.Planner import call_planner
 from app.AI.responder_text import call_responder_text
@@ -22,7 +22,7 @@ async def ask_ai(user_input_set: dict):
         conversation_id = str(uuid.uuid4())
         
     # --- Turn Id ---
-    user_message_id = str(uuid.uuid4())
+    # user_message_id = str(uuid.uuid4())
     assistant_message_id = str(uuid.uuid4())
 
     # --- Auth context ---
@@ -83,6 +83,7 @@ async def ask_ai(user_input_set: dict):
 
     tool_results = {}
     tool_calls = planner_output.get("tool_calls", [])
+    image_create_file_ids = []
 
     if tool_calls:
         for tool_call in tool_calls:
@@ -118,7 +119,6 @@ async def ask_ai(user_input_set: dict):
                 reminder_details = tool_args.get("reminder_details", "")
                 mode = tool_args.get("mode", "auto")
                 result = await _clock_and_calendar(expr, reminder_details, mode)
-
                 tool_results[tool_call["id"]] = {
                     "tool": tool_name,
                     "parameters": tool_args,
@@ -144,11 +144,14 @@ async def ask_ai(user_input_set: dict):
                 size = tool_args.get("size", "512x512")
                 quantity = tool_args.get("quantity", 1)
                 result = await generate_images(prompt, style, size, quantity)
+                for img in result:
+                    print("file id from results:", img["file_id"])
+                    image_create_file_ids.append(img["file_id"])
                 tool_results[tool_call["id"]] = {
                     "tool": tool_name,
                     "parameters": tool_args,
                     "result": result,
-                    "extra_details": "give file link as url"
+                    "extra_details": "give file link as url_path"
                 }
 
             else:
@@ -253,7 +256,7 @@ async def ask_ai(user_input_set: dict):
     )
     
     # --- Persist assistant message ---
-    await save_assistant_message(
+    assistant_id = await save_assistant_message(
         conversation_id,
         "".join(assistant_text),
     )
@@ -282,6 +285,10 @@ async def ask_ai(user_input_set: dict):
                 conversation_id,
                 analysis["description"],
             )
+
+    # --- Save Generated image ---
+    for file_id in image_create_file_ids:
+        await update_generate(file_id, assistant_id, conversation_id)
 
     # --- Send meta ---
     yield {

@@ -32,6 +32,12 @@ app.mount(
     name="uploads"
 )
 
+app.mount(
+    "/generate",
+    StaticFiles(directory=os.path.join(BASE_DIR, "generate")),
+    name="generate"
+)
+
 # =========================
 # CORS
 # =========================

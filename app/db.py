@@ -160,6 +160,9 @@ async def save_assistant_message(conversation_id: str, content: str):
                 "INSERT INTO messages (conversation_id, role, content) VALUES (%s, 'Assistant', %s)",
                 ( conversation_id, content)
             )
+
+            message_id = cur.lastrowid
+            return message_id
             
 async def get_conversation_messages(conversation_id: str):
     pool = await init_db_pool()
@@ -255,4 +258,26 @@ async def delete_conversation(conversation_id: str):
             await cur.execute(
                 "DELETE FROM conversations WHERE id = %s",
                 (conversation_id)
+            )
+
+async def save_generate(id: str, type: str, file_ext: str, message_id: str, conversation_id: str, prompt: str, style: str, size: str):
+    pool = await init_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO generate (id, type, file_ext, message_id, conversation_id, prompt, style, size) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (id, type, file_ext, message_id, conversation_id, prompt, style, size)
+            )
+
+async def update_generate(file_id: str, message_id: str, conversation_id: str):
+    pool = await init_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE generate
+                SET message_id=%s, conversation_id=%s
+                WHERE id=%s
+                """,
+                (message_id, conversation_id, file_id)
             )

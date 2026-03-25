@@ -4,6 +4,8 @@ import uuid
 from fastapi import Request
 import requests
 from dotenv import load_dotenv
+from app.db import save_generate
+
 
 load_dotenv()
 
@@ -50,20 +52,36 @@ async def generate_images(prompt: str, style: str = None, size: str = "512x512",
             if response.status_code == 200:
 
                 file_id = str(uuid.uuid4())
-                filename = f"{file_id}.png"
+                file_type = str("image")
+                file_ext = str("png")
+                filename = f"{file_id}.{file_ext}"
+
                 file_path = os.path.join(SAVED_DIR, filename)
 
                 with open(file_path, "wb") as f:
                     f.write(response.content)
 
                 results.append({
+                    "file_id": file_id,
                     "prompt": prompt,
                     "style": style,
                     "size": size,
-                    "url": f"{Request.base_url}images/{filename}"
+                    "url_path": f"/generate/{filename}"
                 })
-                
 
+                try:
+                    await save_generate(
+                        file_id,
+                        file_type,
+                        file_ext,
+                        None,
+                        None,
+                        prompt,
+                        style,
+                        size
+                    )
+                except Exception as e:
+                    print("SAVE GENERATE ERROR:", e)
 
             else:
                 results.append({"error": response.text})
