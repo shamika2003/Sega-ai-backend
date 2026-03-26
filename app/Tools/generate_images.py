@@ -1,7 +1,6 @@
 import os
 import asyncio
 import uuid
-from fastapi import Request
 import requests
 from dotenv import load_dotenv
 from app.db import save_generate
@@ -66,7 +65,7 @@ async def generate_images(prompt: str, style: str = None, size: str = "512x512",
                     "prompt": prompt,
                     "style": style,
                     "size": size,
-                    "url_path": f"/generate/{filename}"
+                    "file_path": f"/generate/{filename}"
                 })
 
                 try:

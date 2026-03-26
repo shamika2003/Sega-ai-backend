@@ -44,6 +44,10 @@ async def chat_socket(websocket: WebSocket):
             conversation_id = payload.get("conversation_id")
             response_mode = payload.get("response_mode", "text")
 
+            host = websocket.headers.get("host")
+            scheme = "http"  # or detect if needed
+            base_url = f"{scheme}://{host}"
+
             # --- Prepare AI payload ---
             ai_payload = {
                 "user_input": user_input,
@@ -51,7 +55,8 @@ async def chat_socket(websocket: WebSocket):
                 "session_id": session_id,
                 "user_id": user_id,  # None = guest
                 "response_mode": response_mode,
-                "files": files 
+                "files": files,
+                "base_url": base_url
             }
 
             # --- Stream AI response ---

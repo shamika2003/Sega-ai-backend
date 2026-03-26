@@ -1,6 +1,6 @@
-from datetime import datetime
 import uuid
 
+from datetime import datetime
 from app.AI.conversation_state import build_conversation_state
 from app.db import ensure_conversation, save_assistant_message, save_user_message, save_upload, update_generate
 from app.AI.tts_streamer import stream_tts
@@ -144,14 +144,19 @@ async def ask_ai(user_input_set: dict):
                 size = tool_args.get("size", "512x512")
                 quantity = tool_args.get("quantity", 1)
                 result = await generate_images(prompt, style, size, quantity)
+                base_url = str(user_input_set.get("base_url"))
                 for img in result:
                     print("file id from results:", img["file_id"])
+
+                    # prepend base url
+                    img["file_path"] = f"{base_url}{img['file_path']}"
                     image_create_file_ids.append(img["file_id"])
+                
                 tool_results[tool_call["id"]] = {
                     "tool": tool_name,
                     "parameters": tool_args,
                     "result": result,
-                    "extra_details": "give file link as url_path"
+                    "extra_details": "file link as file_path"
                 }
 
             else:

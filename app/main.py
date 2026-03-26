@@ -23,7 +23,6 @@ from app.auth_config import (
 
 app = FastAPI()
 
-
 BASE_DIR = os.path.dirname(__file__)
 
 app.mount(
