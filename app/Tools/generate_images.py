@@ -4,6 +4,7 @@ import uuid
 import requests
 from dotenv import load_dotenv
 from app.db import save_generate
+from typing import Optional
 
 
 load_dotenv()
@@ -22,7 +23,7 @@ os.makedirs(SAVED_DIR, exist_ok=True)
 # -------------------------
 # Generate images
 # -------------------------
-async def generate_images(prompt: str, style: str = None, size: str = "512x512", quantity: int = 1):
+async def generate_images(prompt: str, style: Optional[str] = None, size: str = "512x512", quantity: int = 1):
 
     width, height = map(int, size.lower().split("x"))
 
@@ -70,14 +71,12 @@ async def generate_images(prompt: str, style: str = None, size: str = "512x512",
 
                 try:
                     await save_generate(
-                        file_id,
-                        file_type,
-                        file_ext,
-                        None,
-                        None,
-                        prompt,
-                        style,
-                        size
+                        id=file_id,
+                        type=file_type,
+                        file_ext=file_ext,
+                        prompt=prompt,
+                        style=style,
+                        size=size
                     )
                 except Exception as e:
                     print("SAVE GENERATE ERROR:", e)

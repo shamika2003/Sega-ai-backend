@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from fastapi.staticfiles import StaticFiles
 from app.ws.chat import chat_socket
 
-from app.db import get_conversation_list, get_conversation_messages, save_get_user, delete_conversation
+from app.db import get_conversation_list, get_conversation_messages, save_get_user, delete_chat
 from app.auth_config import (
     create_access_token,
     create_refresh_token, 
@@ -210,7 +210,7 @@ async def logout(response: Response):
 # Delete Conversations
 # =========================
 @app.get("/api/delete_conversations/{conversation_id}")
-async def fetch_conversation(
+async def delete_conversation(
     request: Request,
     conversation_id: str,
     authorization: Optional[str] = Header(None),
@@ -239,7 +239,7 @@ async def fetch_conversation(
             raise HTTPException(status_code=403, detail="Not authorized for this conversation")
         
     try:
-        await delete_conversation(conversation_id)
+        await delete_chat(conversation_id)
     except Exception as e:
         print("Delete failed:", e)
     
@@ -356,7 +356,9 @@ async def link_preview(url: str = Query(..., description="URL to preview")):
 
     def _meta(prop: str) -> str | None:
         tag = soup.find("meta", property=prop) or soup.find("meta", attrs={"name": prop})
-        return tag["content"] if tag and tag.get("content") else None
+        if tag and tag.get("content"):
+            return str(tag["content"])
+        return None
 
     data = {
         "title":       _meta("og:title") or soup.title.string if soup.title else None,

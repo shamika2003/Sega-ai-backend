@@ -8,7 +8,7 @@ MODEL_ID = "eleven_multilingual_v2"
 
 client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
-async def stream_tts(text: str) -> AsyncGenerator[dict, None]:
+async def stream_tts(text: str) -> AsyncGenerator[bytes, None]:
     audio_stream = client.text_to_speech.stream(
         text=text,
         voice_id=VOICE_ID,

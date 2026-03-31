@@ -44,7 +44,7 @@ async def ask_ai(user_input_set: dict):
     }
 
     # --- Vision Analyzer ---
-    vision_result = []
+    vision_result: dict = {}
 
     if(user_input_set.get("files")):
 
@@ -73,7 +73,7 @@ async def ask_ai(user_input_set: dict):
             if vision_result
             else ""
         ),
-        date_time=datetime.now(),
+        date_time=datetime.now().isoformat(),
     )
 
     conversation_title = planner_output.get(
@@ -124,7 +124,6 @@ async def ask_ai(user_input_set: dict):
                     "parameters": tool_args,
                     "result": result
                 }
-                print(f"Result: {result}")
 
             elif tool_name == "media_search":
                 from app.Tools.media_search import media_search
@@ -146,8 +145,6 @@ async def ask_ai(user_input_set: dict):
                 result = await generate_images(prompt, style, size, quantity)
                 base_url = str(user_input_set.get("base_url"))
                 for img in result:
-                    print("file id from results:", img["file_id"])
-
                     # prepend base url
                     img["file_path"] = f"{base_url}{img['file_path']}"
                     image_create_file_ids.append(img["file_id"])
@@ -156,7 +153,7 @@ async def ask_ai(user_input_set: dict):
                     "tool": tool_name,
                     "parameters": tool_args,
                     "result": result,
-                    "extra_details": "file link as file_path"
+                    "extra_details": "file link as file_path use this path to show the image as normal response content. This is not a direct file upload, but a link to the generated image that can be accessed by the frontend."
                 }
 
             else:
@@ -245,7 +242,6 @@ async def ask_ai(user_input_set: dict):
     
     print()
     print("Final extra text:", "".join(assistant_text2))
-    print()
     print()
     print("Final text:", "".join(assistant_text))
 

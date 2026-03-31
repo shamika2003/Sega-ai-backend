@@ -1,7 +1,8 @@
-from typing import Any, List
+from typing import Any, List, Optional
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from geopy.geocoders import Nominatim
+from geopy.location import Location
 from timezonefinder import TimezoneFinder
 import json, urllib.request, time, socket
 from app.db import set_reminder_set, get_reminder_set
@@ -91,8 +92,9 @@ def time_date(expr: str | None) -> datetime:
         pass
 
     try:
-        loc = geolocator.geocode(expr)
-        if loc:
+        loc: Optional[Location] = geolocator.geocode(expr)
+
+        if loc is not None:
             tz_name = tf.timezone_at(lng=loc.longitude, lat=loc.latitude)
             if tz_name:
                 target = ZoneInfo(tz_name)
@@ -171,5 +173,5 @@ async def _clock_and_calendar(raw_expr: str, reminder_details: dict, mode: str =
         return f"Cannot find! reason: {exc} for expression: {raw_expr}"
 
 
-def run(expression: str, mode: str = "auto") -> str:
-    return _clock_and_calendar(expression, mode)
+async def run(expression: str, mode: str = "auto") -> str:
+    return await _clock_and_calendar(expression, {}, mode)

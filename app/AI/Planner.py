@@ -80,7 +80,6 @@ def call_planner(
     vision_context: str
 ) -> dict:
     prompt = build_planner_prompt(user_input, state, date_time, vision_context)
-    print(vision_context)
 
     messages = [{"role": "user", "content": prompt}]
 
@@ -89,8 +88,6 @@ def call_planner(
         full_response += part['message']['content']
 
     text = full_response.strip()
-    
-    print("Planner Response:", text)  # Debug print
     
     if not text:
         raise RuntimeError("Planner returned empty response")

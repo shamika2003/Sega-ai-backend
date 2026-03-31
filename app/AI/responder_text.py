@@ -1,3 +1,4 @@
+import json
 import os
 from ollama import Client
 import yaml
@@ -151,6 +152,12 @@ async def call_responder_text(
     tool_results: dict,
     vision_context: str,
 ):
+    print("Planner Output:", json.dumps(planner_output, indent=4))
+    print()
+    print("Tool Results:", json.dumps(tool_results, indent=4))
+    print()
+    print("Vision Context:", json.dumps(vision_context, indent=4))
+
     messages = await build_responder_prompt(
         user_input,
         conversation_id,
@@ -158,5 +165,6 @@ async def call_responder_text(
         vision_context,
         tool_results,
     )
+
     for part in client.chat(MODEL_NAME, messages=messages, stream=True):
         yield part["message"]["content"]

@@ -1,9 +1,9 @@
-
 # app/db.py
+
 import aiomysql
 import os
 import uuid
-
+from typing import Optional
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", 3306))
@@ -251,7 +251,7 @@ async def save_upload(id: str, file_ext: str, type: str, message_id: str, name: 
                 (id, type, file_ext, message_id, name, conversation_id, description)
             )
 
-async def delete_conversation(conversation_id: str):
+async def delete_chat(conversation_id: str):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -260,7 +260,16 @@ async def delete_conversation(conversation_id: str):
                 (conversation_id)
             )
 
-async def save_generate(id: str, type: str, file_ext: str, message_id: str, conversation_id: str, prompt: str, style: str, size: str):
+async def save_generate(
+    id: str,
+    type: str,
+    file_ext: str,
+    message_id: Optional[str] = None,
+    conversation_id: Optional[str] = None,
+    prompt: str = "",
+    style: Optional[str] = None,
+    size: str = "512x512"
+):
     pool = await init_db_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
