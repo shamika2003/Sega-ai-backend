@@ -1,5 +1,6 @@
 import os
-from pyparsing import Any, Mapping
+from pyparsing.helpers import Any
+from collections.abc import Mapping
 import yaml
 import json
 from ollama import Client
